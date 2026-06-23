@@ -2,7 +2,7 @@ import streamlit as st
 from chatbot import chatbot
 from langchain_core.messages import HumanMessage
 
-CONFIG = {'configurable': {'thread_id': '1'}}
+CONFIG = {'configurable': {'thread_id': '2'}}
 
 if 'messages' not in st.session_state:
     st.session_state.messages = []
@@ -18,10 +18,18 @@ if user_input := st.chat_input('Type here'):
         st.markdown(user_input)
     st.session_state.messages.append({'role': 'user', 'content': user_input})
 
-    response = chatbot.invoke({'messages': [HumanMessage(content=user_input)]}, config=CONFIG)
-    model_response = response['messages'][-1].content
+    def generate_response():
+        stream = chatbot.stream(
+            {'messages': [HumanMessage(content=user_input)]},
+            config=CONFIG,
+            stream_mode='messages'
+        )
+
+        for message_chunk, metadata in stream:
+            if message_chunk.content:
+                yield message_chunk.content
 
     with st.chat_message('assistant'):
-        st.markdown(model_response)
-    st.session_state.messages.append({'role': 'assistant', 'content': model_response})
+        assistant_message = st.write_stream(generate_response())
 
+    st.session_state.messages.append({'role': 'assistant', 'content': assistant_message})
