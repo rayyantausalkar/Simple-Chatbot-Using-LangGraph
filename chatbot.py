@@ -7,10 +7,11 @@ from typing import TypedDict, Annotated
 from dotenv import load_dotenv
 load_dotenv()
 
+
 # model
 model = ChatGoogleGenerativeAI(
-    model='gemini-3.1-flash-lite',
-    temperature='0.5'
+    model='gemini-2.5-flash',
+    temperature='0.5',
 )
 
 # state
