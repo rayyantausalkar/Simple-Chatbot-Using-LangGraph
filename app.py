@@ -1,11 +1,10 @@
 import streamlit as st
 from chatbot import chatbot, retrieve_all_threads
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, ToolMessage, AIMessage
 import uuid
 
 def generate_thread_id():
-    thread_id = uuid.uuid4()
-    return thread_id
+    return uuid.uuid4()
 
 def reset_chat():
     thread_id = generate_thread_id()
@@ -18,7 +17,11 @@ def add_thread(thread_id):
         st.session_state.chat_threads.append(thread_id)
 
 def load_conversations(thread_id):
-    return chatbot.get_state(config={'configurable': {'thread_id': thread_id}}).values.get('messages', [])
+    return chatbot.get_state(config={
+        'configurable': {
+            'thread_id': thread_id
+        }
+    }).values.get('messages', [])
 
 if 'messages' not in st.session_state:
     st.session_state.messages = []
@@ -46,7 +49,7 @@ for thread_id in st.session_state.chat_threads:
         for message in messages:
             if isinstance(message, HumanMessage): role = 'user'
             else: role = 'assistant'
-            temp.append({'role': role, 'content': message})
+            temp.append({'role': role, 'content': message.content if hasattr(message, 'content') else str(message)})
 
         st.session_state.messages = temp
 
@@ -54,28 +57,41 @@ for chat in st.session_state.messages:
     with st.chat_message(chat['role']):
         st.markdown(chat['content'])
 
-
 if user_input := st.chat_input('Type here'):
 
     with st.chat_message('user'):
         st.markdown(user_input)
     st.session_state.messages.append({'role': 'user', 'content': user_input})
 
-    CONFIG = {'configurable': {'thread_id': st.session_state.thread_id}}
-
-    def generate_response():
-        stream = chatbot.stream(
-            {'messages': [HumanMessage(content=user_input)]},
-            config=CONFIG,
-            stream_mode='messages',
-            version='v2'
-        )
-
-        for message_chunk, metadata in stream:
-            if message_chunk.content:
-                yield message_chunk.content
+    CONFIG = {'configurable': {
+        'thread_id': st.session_state.thread_id
+    }}
 
     with st.chat_message('assistant'):
-        assistant_message = st.write_stream(generate_response())
+        with st.status("Thinking...", expanded=True) as status:
+            stream = chatbot.stream(
+                {'messages': [HumanMessage(content=user_input)]},
+                config=CONFIG,
+                stream_mode="updates"
+            )
+            
+            assistant_message = ""
+            
+            for chunk in stream:
+                if "tools" in chunk:
+                    tool_messages = chunk["tools"].get("messages", [])
+                    for msg in tool_messages:
+                        # Log the tool name and input to the status container
+                        status.write(f"🛠️ **Tool Used:** {msg.name}")
+                
+                if "agent" in chunk:
+                    agent_messages = chunk["agent"].get("messages", [])
+                    if agent_messages:
+                        assistant_message = agent_messages[-1].content
+            
+            status.update(label="Response generated!", state="complete", expanded=False)
+        
+        st.markdown(assistant_message)
 
     st.session_state.messages.append({'role': 'assistant', 'content': assistant_message})
+
